@@ -1,4 +1,5 @@
 import bpy
+from bpy_extras.io_utils import ImportHelper
 
 # ブレンダーに登録するアドオン情報
 bl_info = {
@@ -45,6 +46,31 @@ class MYADDON_OT_create_ico_sphere(bpy.types.Operator):
         
         return {'FINISHED'}
 
+# オペレータ シーンエクスポート
+class MYADDON_OT_export_scene(bpy.types.Operator, ImportHelper):
+    bl_idname = "myaddon.myaddon_ot_export_scene"
+    bl_label = "シーンエクスポート"
+    bl_description = "シーンの情報をエクスポートします"
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    # 拡張子フィルタ
+    filter_glob: bpy.props.StringProperty(default="*.json", options={'HIDDEN'})
+    
+    # ファイルパスを格納する型プロパティ
+    filepath: bpy.props.StringProperty(name="File Path", maxlen=1024, default="")
+
+    # メニューを実行したときに呼ばれるコールバック関数
+    def execute(self, context):
+        print("シーンエクスポートを実行します。")
+        print("出力先パス：" + self.filepath)
+        
+        # 全オブジェクトを走査する
+        for object in bpy.context.scene.objects:
+            print(object.name)
+            
+        # オペレータの命令終了を通知
+        return {'FINISHED'}
+
 # トップバーの拡張メニュー
 class TOPBAR_MT_my_menu(bpy.types.Menu):
     # Blenderがクラスを識別する為の固有の文字列
@@ -58,8 +84,10 @@ class TOPBAR_MT_my_menu(bpy.types.Menu):
     def draw(self, context):
         # 1つ目の項目：「頂点を伸ばす」を追加
         self.layout.operator(MYADDON_OT_stretch_vertex.bl_idname, text=MYADDON_OT_stretch_vertex.bl_label)
-        # 2つ目の項目：「ICO球生成」を追加（スライドの課題部分）
+        # 2つ目の項目：「ICO球生成」を追加
         self.layout.operator(MYADDON_OT_create_ico_sphere.bl_idname, text=MYADDON_OT_create_ico_sphere.bl_label)
+        # 3つ目の項目：「シーンエクスポート」を追加
+        self.layout.operator(MYADDON_OT_export_scene.bl_idname, text=MYADDON_OT_export_scene.bl_label)
 
     # 既存のメニューにサブメニューを追加
     def submenu(self, context):
@@ -70,7 +98,8 @@ class TOPBAR_MT_my_menu(bpy.types.Menu):
 # Blenderに登録するクラスリスト
 classes = (
     MYADDON_OT_stretch_vertex,
-    MYADDON_OT_create_ico_sphere,  # 新しいオペレータを登録リストに追加
+    MYADDON_OT_create_ico_sphere,
+    MYADDON_OT_export_scene,
     TOPBAR_MT_my_menu,
 )
 
@@ -81,7 +110,7 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
         
-    # メニューに項目を追加
+    # メインメニューバー（画面最上部のバー）の「エディターメニュー」に自作メニューを追加
     bpy.types.TOPBAR_MT_editor_menus.append(TOPBAR_MT_my_menu.submenu)
     print("レベルエディタが有効化されました。")
 
