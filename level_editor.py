@@ -66,7 +66,8 @@ class MYADDON_OT_export_scene(bpy.types.Operator, ImportHelper):
         
         # 全オブジェクトを走査する
         for object in bpy.context.scene.objects:
-            print(object.name)
+            # 名前と種類（型情報）を「名前:種類」の形式で出力するように修正
+            print(object.name + ":" + object.type)
             
         # オペレータの命令終了を通知
         return {'FINISHED'}
@@ -117,7 +118,7 @@ def register():
 
 # Add-On無効化時コールバック
 def unregister():
-    # メニューから項目を削除
+    # メメニューから項目を削除
     bpy.types.TOPBAR_MT_editor_menus.remove(TOPBAR_MT_my_menu.submenu)
     
     # Blenderからクラスを削除
