@@ -1,4 +1,5 @@
 import bpy
+import json  # JSONライブラリをインポート
 from bpy_extras.io_utils import ImportHelper
 
 # ブレンダーに登録するアドオン情報
@@ -64,11 +65,47 @@ class MYADDON_OT_export_scene(bpy.types.Operator, ImportHelper):
         print("シーンエクスポートを実行します。")
         print("出力先パス：" + self.filepath)
         
+        # 保存するデータ全体の辞書
+        data = {}
+        data["objects"] = [] # 配列の作成
+        
         # 全オブジェクトを走査する
         for object in bpy.context.scene.objects:
-            # 名前と種類（型情報）を「名前:種類」の形式で出力するように修正
-            print(object.name + ":" + object.type)
+            # オブジェクト1個分の辞書
+            object_data = {}
+            object_data["name"] = object.name
+            object_data["type"] = object.type
             
+            # 位置
+            object_data["location"] = [
+                object.location.x,
+                object.location.y,
+                object.location.z
+            ]
+            
+            # 回転（オイラー角）
+            object_data["rotation"] = [
+                object.rotation_euler.x,
+                object.rotation_euler.y,
+                object.rotation_euler.z
+            ]
+            
+            # スケール
+            object_data["scale"] = [
+                object.scale.x,
+                object.scale.y,
+                object.scale.z
+            ]
+            
+            # 配列にオブジェクトを1個追加
+            data["objects"].append(object_data)
+            
+        # ファイルを開いてJSONデータを書き込む
+        with open(self.filepath, "w", encoding="utf-8") as file:
+            # 指定されたインデント数（4）でファイルに辞書を出力
+            json.dump(data, file, indent=4)
+            
+        print("JSONファイルの書き込みが完了しました。")
         # オペレータの命令終了を通知
         return {'FINISHED'}
 
@@ -118,7 +155,7 @@ def register():
 
 # Add-On無効化時コールバック
 def unregister():
-    # メメニューから項目を削除
+    # メニューから項目を削除
     bpy.types.TOPBAR_MT_editor_menus.remove(TOPBAR_MT_my_menu.submenu)
     
     # Blenderからクラスを削除
