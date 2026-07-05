@@ -61,7 +61,6 @@ class MYADDON_OT_export_scene(bpy.types.Operator, ImportHelper):
         
         # 全オブジェクトを走査する
         for object in bpy.context.scene.objects:
-            # オブジェクト1個分の辞書
             object_data = {}
             object_data["name"] = object.name
             object_data["type"] = object.type
@@ -87,18 +86,13 @@ class MYADDON_OT_export_scene(bpy.types.Operator, ImportHelper):
                 object.scale.z
             ]
             
-            # カスタムプロパティの辞書を初期化（新規追加箇所）
+            # カスタムプロパティの取得
             object_data["custom_properties"] = {}
-            
-            # オブジェクト内の全プロパティのキーをループ処理
             for key in object.keys():
-                # Blender内部用の管理データ（_RNA_UIなど）を除外する
                 if key == "_RNA_UI":
                     continue
-                # キーに対応する値をカスタムプロパティ用の辞書に格納
                 object_data["custom_properties"][key] = object[key]
             
-            # 配列にオブジェクトを1個追加
             data["objects"].append(object_data)
             
         # ファイルを開いてJSONデータを書き込む
@@ -107,6 +101,26 @@ class MYADDON_OT_export_scene(bpy.types.Operator, ImportHelper):
             
         print("JSONファイルの書き込みが完了しました。")
         return {'FINISHED'}
+
+# 画面UI：サイドバーのパネル（ボックス＆アイコン装飾版）
+class MYADDON_PT_level_editor(bpy.types.Panel):
+    bl_label = "レベルエディタ"
+    bl_idname = "MYADDON_PT_level_editor"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = 'Level Editor'
+
+    # パネルの描画処理
+    def draw(self, context):
+        # 1つのまとまりを表す「枠（ボックス）」を作成（新規修正箇所）
+        box = self.layout.box()
+        
+        # ボックスの中にラベルとボタンを配置し、さらにアイコンを添える
+        box.label(text="メニュー")
+        box.operator(MYADDON_OT_stretch_vertex.bl_idname, text=MYADDON_OT_stretch_vertex.bl_label, icon='VERTEXSEL')
+        box.operator(MYADDON_OT_create_ico_sphere.bl_idname, text=MYADDON_OT_create_ico_sphere.bl_label, icon='MESH_ICOSPHERE')
+        box.operator(MYADDON_OT_export_scene.bl_idname, text=MYADDON_OT_export_scene.bl_label, icon='EXPORT')
+
 
 # トップバーの拡張メニュー
 class TOPBAR_MT_my_menu(bpy.types.Menu):
@@ -122,19 +136,23 @@ class TOPBAR_MT_my_menu(bpy.types.Menu):
     def submenu(self, context):
         self.layout.menu(TOPBAR_MT_my_menu.bl_idname)
 
+
 # Blenderに登録するクラスリスト
 classes = (
     MYADDON_OT_stretch_vertex,
     MYADDON_OT_create_ico_sphere,
     MYADDON_OT_export_scene,
+    MYADDON_PT_level_editor,
     TOPBAR_MT_my_menu,
 )
+
 
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.types.TOPBAR_MT_editor_menus.append(TOPBAR_MT_my_menu.submenu)
     print("レベルエディタが有効化されました。")
+
 
 def unregister():
     bpy.types.TOPBAR_MT_editor_menus.remove(TOPBAR_MT_my_menu.submenu)
