@@ -4,20 +4,21 @@ import gpu
 import gpu_extras.batch
 import copy
 import mathutils
+import json  # スクリプトの先頭でインポート
 from bpy_extras.io_utils import ExportHelper
 
 bl_info = {
     "name": "Level Editor Addon",
     "author": "Your Name",
-    "version": (1, 2),
+    "version": (2, 0),
     "blender": (3, 0, 0),
     "location": "View3D > Sidebar > FileName / Collider",
-    "description": "カスタムプロパティ、ファイル出力、ローカル/ワールド行列対応の動的コライダー描画に対応したレベルエディタ",
+    "description": "カスタムプロパティ、動的Boxコライダー描画、および階層構造付きJSONシーンエクスポートに対応したレベルエディタ",
     "category": "Object",
 }
 
 # ==========================================
-# 1. 既存のオペレータ・メニュー
+# 1. 既存のオペレータ・メニュー（ダミー）
 # ==========================================
 class MYADDON_OT_stretch_vertex(bpy.types.Operator):
     bl_idname = "myaddon.myaddon_ot_stretch_vertex"
@@ -41,7 +42,7 @@ class TOPBAR_MT_my_menu(bpy.types.Menu):
 
 
 # ==========================================
-# 2. FileName用：プロパティ追加＆Panelクラス
+# 2. FileName用プロパティ＆パネル
 # ==========================================
 class MYADDON_OT_add_filename(bpy.types.Operator):
     bl_idname = "myaddon.myaddon_ot_add_filename"
@@ -68,7 +69,7 @@ class OBJECT_PT_file_name(bpy.types.Panel):
 
 
 # ==========================================
-# 3. コライダー用カスタムプロパティ追加Operator
+# 3. コライダー用プロパティ＆パネル
 # ==========================================
 class MYADDON_OT_add_collider(bpy.types.Operator):
     bl_idname = "myaddon.myaddon_ot_add_collider"
@@ -82,10 +83,6 @@ class MYADDON_OT_add_collider(bpy.types.Operator):
         context.object["collider_size"] = mathutils.Vector((2.0, 2.0, 2.0))
         return {"FINISHED"}
 
-
-# ==========================================
-# 4. コライダー設定Panelクラス
-# ==========================================
 class OBJECT_PT_collider(bpy.types.Panel):
     bl_idname = "OBJECT_PT_collider"
     bl_label = "Collider"
@@ -99,12 +96,11 @@ class OBJECT_PT_collider(bpy.types.Panel):
             self.layout.prop(context.object, '["collider_center"]', text="Center")
             self.layout.prop(context.object, '["collider_size"]', text="Size")
         else:
-            # 自分で考えよう穴埋め：プロパティがない場合は追加Operatorのボタンを表示
             self.layout.operator(MYADDON_OT_add_collider.bl_idname)
 
 
 # ==========================================
-# 5. コライダー描画クラス（スライド準拠・行列掛け算対応版）
+# 4. コライダー描画クラス
 # ==========================================
 class DrawCollider:
     handle = None
@@ -115,27 +111,19 @@ class DrawCollider:
         indices = []
 
         offsets = [
-            [-0.5, -0.5, -0.5], # 左手前
-            [+0.5, -0.5, -0.5], # 右手前
-            [-0.5, +0.5, -0.5], # 左上前
-            [+0.5, +0.5, -0.5], # 右上前
-            [-0.5, -0.5, +0.5], # 左手奥
-            [+0.5, -0.5, +0.5], # 右手奥
-            [-0.5, +0.5, +0.5], # 左上奥
-            [+0.5, +0.5, +0.5], # 右上奥
+            [-0.5, -0.5, -0.5], [+0.5, -0.5, -0.5],
+            [-0.5, +0.5, -0.5], [+0.5, +0.5, -0.5],
+            [-0.5, -0.5, +0.5], [+0.5, -0.5, +0.5],
+            [-0.5, +0.5, +0.5], [+0.5, +0.5, +0.5],
         ]
 
-        # 現在シーンのオブジェクトリストを走査
         for object in bpy.context.scene.objects:
-            # 描画スキップ：コライダープロパティがなければ飛ばす
             if not "collider" in object:
                 continue
 
-            # 中心点、サイズの変数を宣言
             center = mathutils.Vector((0.0, 0.0, 0.0))
             size = mathutils.Vector((2.0, 2.0, 2.0))
 
-            # プロパティから値を取得
             center[0] = object["collider_center"][0]
             center[1] = object["collider_center"][1]
             center[2] = object["collider_center"][2]
@@ -143,26 +131,17 @@ class DrawCollider:
             size[1] = object["collider_size"][1]
             size[2] = object["collider_size"][2]
 
-            # 追加前の頂点数
             start = len(vertices["pos"])
 
-            # Boxの8頂点分回す
             for offset in offsets:
-                # オブジェクトの中心座標の代わりにコライダーの中心点を使う
                 pos = copy.copy(center)
-                
-                # 中心点を基準に各頂点ごとにずらす
                 pos[0] += offset[0] * size[0]
                 pos[1] += offset[1] * size[1]
                 pos[2] += offset[2] * size[2]
                 
-                # ローカル座標からワールド座標に変換（@演算子でワールド行列を掛ける）
                 pos = object.matrix_world @ pos
-                
-                # 頂点データリストに座標を追加
                 vertices['pos'].append(pos)
 
-            # 12本の辺のインデックス登録
             indices.append([start + 0, start + 1])
             indices.append([start + 2, start + 3])
             indices.append([start + 0, start + 2])
@@ -172,9 +151,8 @@ class DrawCollider:
             indices.append([start + 4, start + 6])
             indices.append([start + 5, start + 7])
             indices.append([start + 0, start + 4])
-            indices.append([start + 1, start + 5])
-            indices.append([start + 2, start + 6])
-            indices.append([start + 3, start + 7])
+            items = [[start + 1, start + 5], [start + 2, start + 6], [start + 3, start + 7]]
+            indices.extend(items)
 
         if not vertices["pos"]:
             return
@@ -182,69 +160,114 @@ class DrawCollider:
         shader = gpu.shader.from_builtin("UNIFORM_COLOR")
         batch = gpu_extras.batch.batch_for_shader(shader, "LINES", vertices, indices=indices)
 
-        color = [0.5, 1.0, 1.0, 1.0] # 水色
+        color = [0.5, 1.0, 1.0, 1.0]
         shader.bind()
         shader.uniform_float("color", color)
         batch.draw(shader)
 
 
 # ==========================================
-# 6. シーン出力エクスポーターOperator（綺麗に整理版）
+# 5. シーン出力エクスポーターOperator (JSON版)
 # ==========================================
 class MYADDON_OT_export_scene(bpy.types.Operator, ExportHelper):
     bl_idname = "myaddon.myaddon_ot_export_scene"
     bl_label = "シーン出力"
-    bl_description = "シーンの階層構造をテキストファイルに書き出します"
+    bl_description = "シーン情報をExportします"
     bl_options = {'REGISTER', 'UNDO'}
 
-    filename_ext = ".txt"
+    # 出力するファイルの拡張子設定を ".scene" から ".json" に変更
+    filename_ext = ".json"
 
-    def write_and_print(self, file, text):
-        file.write(text + "\n")
-        print(text)
+    def parse_scene_recursive_json(self, data_parent, object, level):
+        """オブジェクトを再帰的に走査してディクショナリにパックする関数"""
+        # 1個分のjsonオブジェクト(辞書)を生成
+        json_object = dict()
+        json_object["type"] = object.type
+        json_object["name"] = object.name
 
-    def parse_scene_recursive(self, file, object, level):
-        indent = '\t' * level
-        self.write_and_print(file, indent + object.type)
+        # トランスフォーム情報の取得と変換
+        trans, rot_quat, scale = object.matrix_local.decompose()
+        rot = rot_quat.to_euler()
         
-        trans = object.location
-        rot = [math.degrees(a) for a in object.rotation_euler]
-        scale = object.scale
-        
-        self.write_and_print(file, indent + "T %f %f %f" % (trans.x, trans.y, trans.z))
-        self.write_and_print(file, indent + "R %f %f %f" % (rot[0], rot[1], rot[2]))
-        self.write_and_print(file, indent + "S %f %f %f" % (scale.x, scale.y, scale.z))
-        
+        # ラジアンから度数法に変換
+        rot.x = math.degrees(rot.x)
+        rot.y = math.degrees(rot.y)
+        rot.z = math.degrees(rot.z)
+
+        # トランスフォーム情報を登録
+        transform = dict()
+        transform["translation"] = (trans.x, trans.y, trans.z)
+        transform["rotation"] = (rot.x, rot.y, rot.z)
+        transform["scaling"] = (scale.x, scale.y, scale.z)
+        json_object["transform"] = transform
+
+        # カスタムプロパティ 'file_name' のパック
         if "file_name" in object:
-            self.write_and_print(file, indent + "N %s" % object["file_name"])
+            json_object["file_name"] = object["file_name"]
 
-        # カスタムプロパティ 'collider' の出力処理（自分で整理した綺麗な記述）
+        # カスタムプロパティ 'collider' のパック
         if "collider" in object:
-            self.write_and_print(file, indent + "C %s" % object["collider"])
-            
-            cc = object["collider_center"]
-            self.write_and_print(file, indent + "CC %f %f %f" % (cc[0], cc[1], cc[2]))
-            
-            cs = object["collider_size"]
-            self.write_and_print(file, indent + "CS %f %f %f" % (cs[0], cs[1], cs[2]))
-            
-        self.write_and_print(file, indent + 'END')
-        self.write_and_print(file, '')
+            collider = dict()
+            collider["type"] = object["collider"]
+            collider["center"] = object["collider_center"].to_list() # JSONで扱える配列に変換
+            collider["size"] = object["collider_size"].to_list()     # JSONで扱える配列に変換
+            json_object["collider"] = collider
 
-        for child in object.children:
-            self.parse_scene_recursive(file, child, level + 1)
+        # 親のオブジェクトリストに自分を追加
+        data_parent.append(json_object)
+
+        # 子ノードがあれば再帰的に処理（入れ子構造の実現）
+        if len(object.children) > 0:
+            json_object["children"] = list()
+            for child in object.children:
+                self.parse_scene_recursive_json(json_object["children"], child, level + 1)
+
+    def export_json(self):
+        """JSON形式でファイルに出力"""
+        
+        # 保存する情報をまとめるdict
+        json_object_root = dict()
+
+        # ノード名
+        json_object_root["name"] = "scene"
+        # オブジェクトリストを作成
+        json_object_root["objects"] = list()
+
+        # #Todo: シーン内の全オブジェクト走査してパック
+        for object in bpy.context.scene.objects:
+            # ルートオブジェクト（親がいないもの）から走査を開始する
+            if object.parent:
+                continue
+            self.parse_scene_recursive_json(json_object_root["objects"], object, 0)
+
+        # #オブジェクトをJSON文字列にエンコード
+        # スライドの指定通り json.JSONEncoder().encode() を使用
+        # ※もし改行して見やすくしたい場合は、授業後に indent=4 を足すと綺麗になります！
+        json_text = json.JSONEncoder().encode(json_object_root)
+
+        # #コンソールに表示してみる
+        print(json_text)
+
+        # #ファイルをテキスト形式で書き出し用にオープン
+        # #スコープを抜けると自動的にクローズされる
+        with open(self.filepath, "wt", encoding="utf-8") as file:
+            # #ファイルに文字列を書き込む
+            file.write(json_text)
 
     def execute(self, context):
-        with open(self.filepath, "w", encoding="utf-8") as file:
-            self.write_and_print(file, "SCENE")
-            root_objects = [obj for obj in context.scene.objects if obj.parent is None]
-            for obj in root_objects:
-                self.parse_scene_recursive(file, obj, 0)
+        print("シーン情報をExportします")
+        
+        # export() を呼び出していた箇所を export_json() の呼び出しに書き換える
+        self.export_json()
+
+        self.report({'INFO'}, "シーン情報をExportしました")
+        print("シーン情報をExportしました")
+
         return {'FINISHED'}
 
 
 # ==========================================
-# 7. クラスの登録リストと register / unregister
+# 6. レジスト処理
 # ==========================================
 classes = (
     MYADDON_OT_stretch_vertex,
@@ -253,8 +276,8 @@ classes = (
     TOPBAR_MT_my_menu,
     MYADDON_OT_add_filename,
     OBJECT_PT_file_name,
-    MYADDON_OT_add_collider,  # クラスリストに登録
-    OBJECT_PT_collider,      # クラスリストに登録
+    MYADDON_OT_add_collider,
+    OBJECT_PT_collider,
 )
 
 def register():
@@ -264,7 +287,7 @@ def register():
     DrawCollider.handle = bpy.types.SpaceView3D.draw_handler_add(
         DrawCollider.draw_collider, (), "WINDOW", "POST_VIEW"
     )
-    print("レベルエディタ（Boxコライダー完全版）が有効化されました。")
+    print("レベルエディタ（JSON完全準拠版）が有効化されました。")
 
 def unregister():
     if DrawCollider.handle is not None:
@@ -273,7 +296,7 @@ def unregister():
 
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
-    print("レベルエディタ（Boxコライダー完全版）が無効化されました。")
+    print("レベルエディタ（JSON完全準拠版）が無効化されました。")
 
 if __name__ == "__main__":
     register()
